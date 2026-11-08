@@ -1,10 +1,11 @@
 import argparse
 import sys
-from pathlib import Path
+from contextlib import ExitStack
+
 from pdf_toolkit.core import PDFToolkit
 
 
-def main():
+def _run():
     parser = argparse.ArgumentParser(
         description="PDF Toolkit - 一个轻量全能的 PDF 命令行处理工具"
     )
@@ -63,6 +64,19 @@ def main():
     except Exception as e:
         print(f"❌ 发生错误: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+def main():
+    # Keep the caller's encoding (including redirected Windows output), but
+    # escape unsupported characters instead of failing after a successful write.
+    # Restore stream policies when main() is called from another Python program.
+    with ExitStack() as restore:
+        for stream in (sys.stdout, sys.stderr):
+            reconfigure = getattr(stream, "reconfigure", None)
+            if callable(reconfigure) and getattr(stream, "errors", None) == "strict":
+                reconfigure(errors="backslashreplace")
+                restore.callback(reconfigure, errors="strict")
+        return _run()
 
 
 if __name__ == "__main__":

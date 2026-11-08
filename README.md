@@ -31,6 +31,9 @@ pip install .
 
 安装完成后，可直接在终端使用 `pdf-toolkit` 命令：
 
+终端或重定向输出的编码不支持中文或符号时，命令行会将这些字符显示为转义序列，
+避免操作已经完成却因打印提示而报错；PDF 内容和导出的 UTF-8 文本不受影响。
+
 **合并 PDF**
 ```bash
 pdf-toolkit merge -i doc1.pdf doc2.pdf -o merged.pdf
