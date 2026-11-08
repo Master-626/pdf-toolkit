@@ -12,10 +12,10 @@ from PyPDF2 import PdfReader, PdfWriter
 from pdf_toolkit import cli
 
 
-def invoke(arguments, encoding):
+def invoke(arguments, encoding, errors):
     env = dict(os.environ)
     env["PYTHONPATH"] = str(Path(cli.__file__).parents[1])
-    env["PYTHONIOENCODING"] = encoding + ":strict"
+    env["PYTHONIOENCODING"] = encoding + ":" + errors
     return subprocess.run(
         [sys.executable, "-m", "pdf_toolkit.cli"] + arguments,
         env=env,
@@ -27,20 +27,22 @@ def invoke(arguments, encoding):
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "ascii", "utf-8"])
-def test_help_and_parser_errors_work_with_legacy_encoding(encoding):
-    result = invoke(["--help"], encoding)
+@pytest.mark.parametrize("errors", ["strict", "surrogateescape", "surrogatepass"])
+def test_help_and_parser_errors_work_with_legacy_encoding(encoding, errors):
+    result = invoke(["--help"], encoding, errors)
     assert result.returncode == 0
     assert "PDF Toolkit" in result.stdout
     assert not result.stderr
 
-    result = invoke(["split"], encoding)
+    result = invoke(["split"], encoding, errors)
     assert result.returncode == 2
     assert "--input" in result.stderr
     assert "UnicodeEncodeError" not in result.stderr
 
 
 @pytest.mark.parametrize("encoding", ["cp1252", "ascii", "utf-8"])
-def test_split_and_conflict_keep_correct_exit_status(tmp_path, encoding):
+@pytest.mark.parametrize("errors", ["strict", "surrogateescape", "surrogatepass"])
+def test_split_and_conflict_keep_correct_exit_status(tmp_path, encoding, errors):
     source = tmp_path / "文档.pdf"
     output = tmp_path / "拆分"
     writer = PdfWriter()
@@ -49,14 +51,14 @@ def test_split_and_conflict_keep_correct_exit_status(tmp_path, encoding):
         writer.write(stream)
     arguments = ["split", "-i", str(source), "-o", str(output)]
 
-    first = invoke(arguments, encoding)
+    first = invoke(arguments, encoding, errors)
     assert first.returncode == 0, first.stderr
     assert first.stdout
     victim = output / "文档_page_1.pdf"
     before = victim.read_bytes()
     assert len(PdfReader(victim).pages) == 1
 
-    second = invoke(arguments, encoding)
+    second = invoke(arguments, encoding, errors)
     assert second.returncode == 1
     assert not second.stdout
     assert "Refusing to overwrite existing output" in second.stderr
@@ -64,9 +66,10 @@ def test_split_and_conflict_keep_correct_exit_status(tmp_path, encoding):
     assert victim.read_bytes() == before
 
 
-def test_embedded_main_restores_caller_stream_settings(monkeypatch):
-    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
-    stderr = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict")
+@pytest.mark.parametrize("errors", ["strict", "surrogateescape", "surrogatepass"])
+def test_embedded_main_restores_caller_stream_settings(monkeypatch, errors):
+    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors=errors)
+    stderr = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors=errors)
     monkeypatch.setattr(sys, "stdout", stdout)
     monkeypatch.setattr(sys, "stderr", stderr)
     monkeypatch.setattr(sys, "argv", ["pdf-toolkit", "--help"])
@@ -74,7 +77,24 @@ def test_embedded_main_restores_caller_stream_settings(monkeypatch):
         cli.main()
     assert result.value.code == 0
     assert stdout.encoding == stderr.encoding == "cp1252"
-    assert stdout.errors == stderr.errors == "strict"
+    assert stdout.errors == stderr.errors == errors
+
+
+@pytest.mark.parametrize(
+    "errors", ["replace", "ignore", "backslashreplace", "xmlcharrefreplace"]
+)
+def test_existing_non_failing_policies_are_preserved(monkeypatch, errors):
+    stdout = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors=errors)
+    stderr = io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors=errors)
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(sys, "stderr", stderr)
+
+    def check_policy():
+        assert stdout.errors == stderr.errors == errors
+
+    monkeypatch.setattr(cli, "_run", check_policy)
+    cli.main()
+    assert stdout.errors == stderr.errors == errors
 
 
 def test_main_supports_streams_without_reconfigure(monkeypatch):

@@ -73,9 +73,14 @@ def main():
     with ExitStack() as restore:
         for stream in (sys.stdout, sys.stderr):
             reconfigure = getattr(stream, "reconfigure", None)
-            if callable(reconfigure) and getattr(stream, "errors", None) == "strict":
+            errors = getattr(stream, "errors", None)
+            # Windows redirected stdout can default to surrogateescape, which
+            # still rejects ordinary characters missing from its code page.
+            if callable(reconfigure) and errors in (
+                "strict", "surrogateescape", "surrogatepass"
+            ):
                 reconfigure(errors="backslashreplace")
-                restore.callback(reconfigure, errors="strict")
+                restore.callback(reconfigure, errors=errors)
         return _run()
 
 
