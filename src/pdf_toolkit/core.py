@@ -1,10 +1,35 @@
 import errno
 import os
+from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import List, Union
+from typing import Iterator, List, Union
 
 from PyPDF2 import PdfMerger, PdfReader, PdfWriter
+
+
+def _ensure_new_output(output_file: Path) -> None:
+    """Reject every existing directory entry, including dangling symlinks."""
+    try:
+        output_file.lstat()
+    except FileNotFoundError:
+        return
+    raise FileExistsError(
+        errno.EEXIST, "Refusing to overwrite existing output", str(output_file)
+    )
+
+
+@contextmanager
+def _new_output_path(output_file: Path) -> Iterator[Path]:
+    """Stage a complete file and publish it without replacing a racing writer."""
+    _ensure_new_output(output_file)
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(prefix=".pdf-toolkit-", dir=output_file.parent) as staging:
+        staged_file = Path(staging) / "output"
+        yield staged_file
+        # A hard link never replaces an existing destination. Do not fall back
+        # to replacing rename/write operations on unsupported filesystems.
+        os.link(staged_file, output_file)
 
 
 class PDFToolkit:
@@ -13,19 +38,24 @@ class PDFToolkit:
     @staticmethod
     def merge_pdfs(input_paths: List[Union[str, Path]], output_path: Union[str, Path]) -> None:
         """
-        合并多个 PDF 文件为一个文件。
+        合并多个 PDF 文件为一个文件，不覆盖已有目标。
 
         :param input_paths: 输入 PDF 文件路径列表
         :param output_path: 输出 PDF 文件路径
+        :raises FileExistsError: 目标已存在（包括符号链接或目录）
         """
-        merger = PdfMerger()
-        for path in input_paths:
-            merger.append(str(path))
-        
         output_p = Path(output_path)
-        output_p.parent.mkdir(parents=True, exist_ok=True)
-        merger.write(str(output_p))
-        merger.close()
+        _ensure_new_output(output_p)
+        merger = PdfMerger()
+        try:
+            for path in input_paths:
+                merger.append(str(path))
+            with _new_output_path(output_p) as staged_file:
+                # Own the stream so it is closed even if serialization fails.
+                with staged_file.open("wb") as stream:
+                    merger.write(stream)
+        finally:
+            merger.close()
 
     @staticmethod
     def split_pdf(input_path: Union[str, Path], output_dir: Union[str, Path]) -> List[Path]:
@@ -52,13 +82,7 @@ class PDFToolkit:
         # lstat also detects dangling symlinks, unlike exists(). Check every
         # destination before publishing anything, even a collision on a later page.
         for output_file in generated_files:
-            try:
-                output_file.lstat()
-            except FileNotFoundError:
-                continue
-            raise FileExistsError(
-                errno.EEXIST, "Refusing to overwrite existing output", str(output_file)
-            )
+            _ensure_new_output(output_file)
 
         output_directory.mkdir(parents=True, exist_ok=True)
         # Stage on the destination filesystem so link() can publish complete
@@ -82,12 +106,16 @@ class PDFToolkit:
     @staticmethod
     def extract_text(input_path: Union[str, Path], output_txt: Union[str, Path] = None) -> str:
         """
-        提取 PDF 中的文本内容。
+        提取 PDF 中的文本内容，保存时不覆盖已有目标。
 
         :param input_path: 输入 PDF 文件路径
         :param output_txt: 可选，将文本写入的 txt 文件路径
         :return: 提取的全部文本
+        :raises FileExistsError: 输出目标已存在（包括符号链接或目录）
         """
+        out_p = Path(output_txt) if output_txt else None
+        if out_p is not None:
+            _ensure_new_output(out_p)
         reader = PdfReader(str(input_path))
         full_text = []
 
@@ -97,9 +125,8 @@ class PDFToolkit:
 
         extracted_string = "\n\n".join(full_text)
 
-        if output_txt:
-            out_p = Path(output_txt)
-            out_p.parent.mkdir(parents=True, exist_ok=True)
-            out_p.write_text(extracted_string, encoding="utf-8")
+        if out_p is not None:
+            with _new_output_path(out_p) as staged_file:
+                staged_file.write_text(extracted_string, encoding="utf-8")
 
         return extracted_string

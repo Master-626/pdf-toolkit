@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pdf-toolkit"
 version = "0.1.0"
-description = "一个全能的PDF处理工具包，支持合并、拆分、压缩、加水印、提取文本等常用PDF操作"
+description = "轻量的 PDF 处理工具包，支持合并、拆分和文本提取"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
