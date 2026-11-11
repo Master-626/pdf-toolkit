@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdf-toolkit"
-version = "0.1.0"
-description = "轻量的 PDF 处理工具包，支持合并、拆分和文本提取"
+version = "0.1.1"
+description = "Merge, split, and extract text from PDFs without overwriting existing files"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "MIT" }
@@ -22,6 +22,8 @@ classifiers = [
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Utilities",
 ]
 dependencies = [
@@ -34,9 +36,24 @@ pdf-toolkit = "pdf_toolkit.cli:main"
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
+    "ruff>=0.6.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/Master-626/pdf-toolkit"
 Repository = "https://github.com/Master-626/pdf-toolkit"
 Issue-Tracker = "https://github.com/Master-626/pdf-toolkit/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore:PyPDF2 is deprecated:DeprecationWarning",
+]
+
+[tool.ruff]
+target-version = "py38"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
