@@ -13,11 +13,23 @@ def _run():
 
     # 1. merge
     merge_parser = subparsers.add_parser("merge", help="合并多个 PDF 文件")
+    # action="extend" keeps every -i group. The default "store" action
+    # silently discards all but the last group.
     merge_parser.add_argument(
-        "-i", "--inputs", nargs="+", required=True, help="需要合并的 PDF 文件路径列表"
+        "-i",
+        "--inputs",
+        nargs="+",
+        action="extend",
+        required=True,
+        help="PDF 文件路径，可重复使用 -i",
     )
     merge_parser.add_argument(
         "-o", "--output", required=True, help="合并后的目标文件路径"
+    )
+    merge_parser.add_argument(
+        "-p",
+        "--password",
+        help="打开加密 PDF 的密码；未加密的文件会忽略此参数",
     )
 
     # 2. split
@@ -26,7 +38,15 @@ def _run():
         "-i", "--input", required=True, help="需要拆分的 PDF 文件路径"
     )
     split_parser.add_argument(
-        "-o", "--output-dir", default="./output", help="输出文件夹路径（默认：./output）"
+        "-o",
+        "--output-dir",
+        default="./output",
+        help="输出文件夹路径（默认：./output）",
+    )
+    split_parser.add_argument(
+        "-p",
+        "--password",
+        help="打开加密 PDF 的密码；未加密的文件会忽略此参数",
     )
 
     # 3. extract
@@ -37,6 +57,11 @@ def _run():
     extract_parser.add_argument(
         "-o", "--output", help="保存提取文本的 txt 文件路径（可选）"
     )
+    extract_parser.add_argument(
+        "-p",
+        "--password",
+        help="打开加密 PDF 的密码；未加密的文件会忽略此参数",
+    )
 
     args = parser.parse_args()
 
@@ -46,15 +71,21 @@ def _run():
 
     try:
         if args.command == "merge":
-            PDFToolkit.merge_pdfs(args.inputs, args.output)
+            PDFToolkit.merge_pdfs(args.inputs, args.output, password=args.password)
             print(f"✅ 合并完成！已保存至: {args.output}")
 
         elif args.command == "split":
-            files = PDFToolkit.split_pdf(args.input, args.output_dir)
-            print(f"✅ 拆分完成！共生成 {len(files)} 个文件，已保存至: {args.output_dir}")
+            files = PDFToolkit.split_pdf(
+                args.input, args.output_dir, password=args.password
+            )
+            print(
+                f"✅ 拆分完成！共生成 {len(files)} 个文件，已保存至: {args.output_dir}"
+            )
 
         elif args.command == "extract":
-            text = PDFToolkit.extract_text(args.input, args.output)
+            text = PDFToolkit.extract_text(
+                args.input, args.output, password=args.password
+            )
             if args.output:
                 print(f"✅ 文本已提取并保存至: {args.output}")
             else:
